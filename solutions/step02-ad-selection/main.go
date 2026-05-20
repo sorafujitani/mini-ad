@@ -1,53 +1,9 @@
-# Step 02 — 広告選択ロジック
-
-> 在庫から「どれを返すか」を決める意思決定の土台。**Strategy パターン** + 決定理由のログ化。
-
----
-
-## このステップで学ぶこと
-
-- **配信戦略 (Strategy パターン)** — `Selector` という interface に複数実装を持たせる
-- 配信アルゴリズム 3 系統
-  - ランダム選択 (`uniform random`)
-  - 重み付け選択 (`weighted random` / 累積分布関数で実装)
-  - 最高入札 (`highest bid`)
-- **Decision (意思決定ログ)** — 「なぜこの広告を選んだか」「他に何があったか」を残す習慣
-- テスト容易性のための **deterministic random** (固定 seed)
-
-関連座学: [docs/02-terminology.md](../../docs/02-terminology.md) §課金モデル, [docs/06-auction.md](../../docs/06-auction.md)
-
----
-
-## 前提
-
-Step 01 で組んだ土台 (slog, middleware, graceful shutdown, Server, Inventory) を **そのまま継承** します。
-Step 01 の `main.go` をコピーしてから差分を当てる、というのが楽：
-
-```bash
-cp -r steps/step01-hello-ad steps/step02-ad-selection
-# main.go を以下に従って書き換え
-```
-
----
-
-## 何を作るか
-
-| Method & Path | 役割 |
-|---------------|------|
-| `GET /` | publisher ページ (3 戦略を切り替えるボタン) |
-| `GET /ad?slot=...&strategy=random` | 一様ランダム |
-| `GET /ad?slot=...&strategy=weighted` | bid_cpm 重み付け |
-| `GET /ad?slot=...&strategy=highest` | 最高入札 |
-| `GET /admin/inventory` | 現在の在庫を JSON で返す (デバッグ用) |
-| `GET /healthz` | (Step 01 と同じ) |
-
----
-
-## 実装
-
-### A. パッケージ宣言とインポート
-
-```go
+// Step 02 — 広告選択ロジック
+//
+// 参照実装: steps/step02-ad-selection/README.md に対応する完成形コード。
+// Step 01 の HTTP サーバ土台 (middleware / graceful shutdown) を継承し、
+// Selector interface + 3 戦略 (random / weighted / highest) と
+// Decision ログを追加している。
 package main
 
 import (
@@ -67,18 +23,16 @@ import (
 	"syscall"
 	"time"
 )
-```
 
-`math/rand` を `mrand` にエイリアスするのは Step 04 以降で `crypto/rand` も併用するため早めに癖をつける。
+// =====================================================================
+// Config
+// =====================================================================
 
-### B. 設定 — strategy を環境変数で初期化
-
-```go
 type Config struct {
-	Addr             string
-	LogLevel         slog.Level
-	DefaultStrategy  string
-	RandomSeed       int64 // 0 = time-based
+	Addr            string
+	LogLevel        slog.Level
+	DefaultStrategy string
+	RandomSeed      int64 // 0 = time-based
 }
 
 func loadConfig() Config {
@@ -101,17 +55,16 @@ func loadConfig() Config {
 	case "error":
 		cfg.LogLevel = slog.LevelError
 	}
-	// RANDOM_SEED で再現可能にする (テスト用)
 	if v := os.Getenv("RANDOM_SEED"); v != "" {
 		fmt.Sscanf(v, "%d", &cfg.RandomSeed)
 	}
 	return cfg
 }
-```
 
-### C. ドメイン型 — Ad に bid_cpm を追加
+// =====================================================================
+// Domain — Ad / SlotID / Inventory
+// =====================================================================
 
-```go
 type Ad struct {
 	ID       string `json:"id"`
 	Title    string `json:"title"`
@@ -119,7 +72,7 @@ type Ad struct {
 	ClickURL string `json:"click_url"`
 	Width    int    `json:"width"`
 	Height   int    `json:"height"`
-	BidCPM   int    `json:"bid_cpm"` // この教材では「1000 imp あたりの入札額」を整数で表現（通貨単位は省略）
+	BidCPM   int    `json:"bid_cpm"` // 整数セント / 1000 imp
 }
 
 type SlotID string
@@ -144,17 +97,15 @@ func defaultInventory() Inventory {
 			{ID: "ad-banner-acme", Title: "Acme Banner", ImageURL: "https://placehold.co/728x90/orange/white?text=Acme+Banner", ClickURL: "https://example.com/acme/banner", Width: 728, Height: 90, BidCPM: 200},
 			{ID: "ad-banner-house", Title: "house ad", ImageURL: "https://placehold.co/728x90/gray/white?text=House+Ad", ClickURL: "https://example.com/house", Width: 728, Height: 90, BidCPM: 10},
 		},
+		// side-skyscraper は意図的に在庫を持たせない → no-fill (204) 確認用。
 	}
 }
-```
 
-### D. Selector interface と 3 実装
+// =====================================================================
+// Selector — Strategy パターン
+// =====================================================================
 
-Strategy パターン: 「選び方」を interface にして実装差し替え可能にする。
-
-```go
-// Selector は ads から 1 つ広告を選ぶ。
-// 各実装はランダム性のために *mrand.Rand を内部で持つ。
+// Selector は ads から 1 つ広告を選ぶ。各実装はランダム性のために *mrand.Rand を内部で持つ。
 type Selector interface {
 	Name() string
 	Pick(ads []Ad) (Ad, bool)
@@ -243,16 +194,9 @@ func (HighestBidSelector) Pick(ads []Ad) (Ad, bool) {
 	}
 	return best, true
 }
-```
 
-ポイント：
-- **`*mrand.Rand` は並行 unsafe** なので `sync.Mutex` で囲う (テストで固定 seed を使うと顕著に問題になる)
-- `Name()` を持たせて decision log に乗せる
-- `HighestBidSelector` には乱数源が要らないので zero value で使える
+// --- registry ---
 
-#### Selector レジストリ
-
-```go
 type SelectorRegistry struct {
 	defaultName string
 	selectors   map[string]Selector
@@ -269,7 +213,6 @@ func NewSelectorRegistry(defaultName string, rng *mrand.Rand) *SelectorRegistry 
 	}
 }
 
-// Resolve: name が空 or 未知の場合は default を返す。
 func (r *SelectorRegistry) Resolve(name string) Selector {
 	if name == "" {
 		name = r.defaultName
@@ -279,12 +222,11 @@ func (r *SelectorRegistry) Resolve(name string) Selector {
 	}
 	return r.selectors[r.defaultName]
 }
-```
 
-### E. Decision log — 「なぜこの広告を選んだか」
+// =====================================================================
+// Decision — 「なぜこの広告を選んだか」のログ
+// =====================================================================
 
-```go
-// Decision は配信時の意思決定スナップショット。後で分析可能。
 type Decision struct {
 	RequestID    string    `json:"request_id"`
 	OccurredAt   time.Time `json:"occurred_at"`
@@ -295,23 +237,116 @@ type Decision struct {
 	WinnerBidCPM int       `json:"winner_bid_cpm,omitempty"`
 	NoFill       bool      `json:"no_fill,omitempty"`
 }
-```
 
-これを slog で吐けば、後段の集計基盤で「strategy 別の no-fill 率」とか「candidate=0 の割合」とか出せる。
+// =====================================================================
+// Middleware — Chain / RequestID / AccessLog / Recover
+// (Step 01 から継承)
+// =====================================================================
 
-### F. middleware — Step 01 と同じ
+type Middleware func(http.Handler) http.Handler
 
-middleware セクション (`Chain`, `RequestID`, `AccessLog`, `Recover`, `statusRecorder` 周り) はそのまま継承。**変更不要なので Step 01 から丸ごとコピー**。
+func Chain(mws ...Middleware) Middleware {
+	return func(h http.Handler) http.Handler {
+		for i := len(mws) - 1; i >= 0; i-- {
+			h = mws[i](h)
+		}
+		return h
+	}
+}
 
-コピー元の例:
+type ctxKey int
 
-- Step 01 の README 内コードブロック
-- または [`steps/_shared/middleware.go`](../_shared/middleware.go)（`package main` に書き換えて `middleware.go` として保存）
-- 完成例: [`solutions/step02-ad-selection/`](../../solutions/step02-ad-selection/)
+const ctxKeyRequestID ctxKey = iota
 
-### G. Server — Selector を依存に持つ
+var reqIDCounter atomic.Uint64
 
-```go
+func nextRequestID() string {
+	n := reqIDCounter.Add(1)
+	return fmt.Sprintf("req-%d-%06d", time.Now().UnixNano(), n)
+}
+
+func RequestID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.Header.Get("X-Request-ID")
+		if id == "" {
+			id = nextRequestID()
+		}
+		ctx := context.WithValue(r.Context(), ctxKeyRequestID, id)
+		w.Header().Set("X-Request-ID", id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func GetRequestID(ctx context.Context) string {
+	if v, ok := ctx.Value(ctxKeyRequestID).(string); ok {
+		return v
+	}
+	return ""
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+	bytes  int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Write(b []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(b)
+	r.bytes += n
+	return n, err
+}
+
+func AccessLog(logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			rec := &statusRecorder{ResponseWriter: w}
+			next.ServeHTTP(rec, r)
+			logger.LogAttrs(r.Context(), slog.LevelInfo, "request",
+				slog.String("req_id", GetRequestID(r.Context())),
+				slog.String("method", r.Method),
+				slog.String("path", r.URL.Path),
+				slog.String("query", r.URL.RawQuery),
+				slog.Int("status", rec.status),
+				slog.Int("bytes", rec.bytes),
+				slog.Duration("elapsed", time.Since(start)),
+				slog.String("ua", r.UserAgent()),
+				slog.String("remote", r.RemoteAddr),
+			)
+		})
+	}
+}
+
+func Recover(logger *slog.Logger) Middleware {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			defer func() {
+				if rv := recover(); rv != nil {
+					logger.ErrorContext(r.Context(), "panic in handler",
+						slog.String("req_id", GetRequestID(r.Context())),
+						slog.Any("recover", rv),
+						slog.String("stack", string(debug.Stack())),
+					)
+					http.Error(w, "internal server error", http.StatusInternalServerError)
+				}
+			}()
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// =====================================================================
+// Server
+// =====================================================================
+
 type Server struct {
 	logger    *slog.Logger
 	inventory Inventory
@@ -400,11 +435,11 @@ func (s *Server) logDecision(ctx context.Context, d Decision) {
 		slog.Bool("no_fill", d.NoFill),
 	)
 }
-```
 
-### H. HTML テンプレート — strategy 切替 UI
+// =====================================================================
+// HTML — strategy 切替 UI
+// =====================================================================
 
-```go
 const publisherPageHTML = `<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -452,11 +487,11 @@ const publisherPageHTML = `<!DOCTYPE html>
 </body>
 </html>
 `
-```
 
-### I. main — Selector を組み立てて Server に渡す
+// =====================================================================
+// main — 起動 + graceful shutdown
+// =====================================================================
 
-```go
 func main() {
 	cfg := loadConfig()
 	logger := slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: cfg.LogLevel}))
@@ -489,7 +524,10 @@ func main() {
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logger.Info("server starting", slog.String("addr", cfg.Addr), slog.String("default_strategy", cfg.DefaultStrategy))
+		logger.Info("server starting",
+			slog.String("addr", cfg.Addr),
+			slog.String("default_strategy", cfg.DefaultStrategy),
+		)
 		err := srv.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
@@ -516,69 +554,3 @@ func main() {
 	}
 	logger.Info("server stopped cleanly")
 }
-```
-
-### J. middleware は Step 01 と同型なので継承
-
-`Chain`, `RequestID`, `AccessLog`, `Recover`, `statusRecorder`, `GetRequestID`, `ctxKey` を Step 01 からそのままコピーすること（セクション F 参照）。**main.go に `var _ = ...` のようなダミー import は不要**です。
-
----
-
-## 動作確認
-
-```bash
-go run ./steps/step02-ad-selection/
-
-# 戦略別に分布を確認
-for s in random weighted highest; do
-  echo "=== $s ==="
-  for i in $(seq 1 50); do
-    curl -s "http://localhost:8080/ad?strategy=$s" | jq -r '.id'
-  done | sort | uniq -c
-done
-
-# 在庫を覗く
-curl -s http://localhost:8080/admin/inventory | jq
-
-# decision log を tail (JSON)
-go run ./steps/step02-ad-selection/ 2>&1 | jq -c 'select(.msg=="decision")'
-```
-
-deterministic な分布検証：
-
-```bash
-RANDOM_SEED=42 go run ./steps/step02-ad-selection/ &
-PID=$!
-sleep 0.5
-for i in $(seq 1 30); do
-  curl -s 'http://localhost:8080/ad?strategy=weighted' | jq -r '.id'
-done | sort | uniq -c
-kill $PID
-```
-
-期待: 同じ seed なら同じ分布が出る (再現可能)。
-
----
-
-## 実験してみよう
-
-- `bid_cpm = 0` の広告を 1 つ入れて、`weighted` で選ばれないことを確認
-- `RANDOM_SEED=42` と `RANDOM_SEED=99` で 100 回ずつ叩いて分布の違いを観察
-- `Selector` を実装して **eCPM-based** (`bid_cpm × 仮想 CTR × 1000`) のセレクタを足す
-- `Selector.Pick` をテストする `_test.go` を書く（table-driven test がおすすめ）
-  - `WeightedSelector` を `RANDOM_SEED=42` 固定で 10000 回回し、期待比率と大きく乖離していないか確認
-- `/admin/inventory` に Basic 認証をかけてみる
-
----
-
-## 設計上のメモ
-
-- **「選び方」をロジックではなく interface にする** のは大事。Step 5 で frequency cap が入った時、「frequency-aware なセレクタ」を別実装として並べられる
-- decision log を残す習慣は **ML 系の特徴量集めにも直結**。「なぜこの imp はこの ad を出したか」が後から復元できないと、CTR モデルの学習データが作れない
-- 乱数を deterministic にできる作りは **テスト時の利益が絶大**。`time.Now().UnixNano()` をそのままぶっこむ "なんとなくランダム" は避ける
-
----
-
-## 次へ
-
-→ [Step 03 — ターゲティング](../step03-targeting/)

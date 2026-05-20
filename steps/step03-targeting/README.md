@@ -699,7 +699,7 @@ const publisherPageHTML = `<!DOCTYPE html>
 
 ### F. `middleware.go` — Step 01-02 と同じ
 
-Step 01 の middleware.go (Chain / RequestID / AccessLog / Recover / statusRecorder / GetRequestID / ctxKey) をそのままコピー。
+Step 01 の middleware (Chain / RequestID / AccessLog / Recover / statusRecorder / GetRequestID / ctxKey) をそのままコピー。コピー元: [`steps/_shared/middleware.go`](../_shared/middleware.go)（`package main` に変更）または [`solutions/step02-ad-selection/`](../../solutions/step02-ad-selection/)。
 
 ### G. `main.go` — Step 02 とほぼ同じ
 

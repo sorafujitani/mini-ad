@@ -43,10 +43,12 @@
 steps/step07-rtb/
 ├── README.md       (これ)
 ├── mini-ad/
-│   └── main.go     ← SSP 役
+│   └── main.go     ← SSP 役（README に従って新規作成）
 └── mock-dsp/
-    └── main.go     ← DSP 役 (複数起動)
+    └── main.go     ← DSP 役（README に従って新規作成、複数ポートで起動）
 ```
+
+Step 6 の DB が動いていること（ローカル在庫 + DB 在庫のハイブリッド配信を想定）。
 
 ---
 

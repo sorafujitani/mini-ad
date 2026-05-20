@@ -22,6 +22,12 @@
 ## 前提
 
 Step 03 の構造 (middleware / Selector / Targeting / Inventory / Server) を継承。
+
+```bash
+cp -r steps/step03-targeting steps/step04-tracking
+```
+
+middleware のコピー元: [`steps/_shared/middleware.go`](../_shared/middleware.go) / [`solutions/step02-ad-selection/`](../../solutions/step02-ad-selection/)。
 ファイルをさらに分けます：
 
 ```

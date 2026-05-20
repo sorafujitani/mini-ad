@@ -20,6 +20,12 @@ mini-ad/
 各 step は **独立した main パッケージ** として動かせます。
 前の step のコードに新しい概念を 1 つだけ足していく構成です。
 
+| 補助リソース | 内容 |
+|-------------|------|
+| [`solutions/`](solutions/) | 動作する参照実装（詰まったときの diff 用） |
+| [`steps/_shared/middleware.go`](steps/_shared/middleware.go) | Step 01 以降で共通の HTTP middleware |
+| [`scripts/verify.sh`](scripts/verify.sh) | 参照実装の `go build` 一括確認 |
+
 ---
 
 ## 学習ロードマップ
@@ -35,7 +41,7 @@ mini-ad/
 | [07](steps/step07-rtb/) | RTB と入札 | OpenRTB 風 bid request / 第二価格オークション | Go + PostgreSQL |
 | [08](steps/step08-reporting/) | ペーシングとレポーティング | 予算消化・スムージング・集計 | Go + PostgreSQL |
 
-座学を先に読みたい人は [`docs/00-overview.md`](docs/00-overview.md) から。
+座学を先に読みたい人は [`docs/00-overview.md`](docs/00-overview.md) から。困ったときは [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md)。
 
 ---
 
@@ -99,19 +105,28 @@ go run ./steps/step01-hello-ad/        # http://localhost:8080
 
 ## ハンズオンの進め方
 
-各 step の `README.md` には **実装するコード本体が段階分けで掲載されています**。`main.go` ファイル自体は意図的に置いていません — 各 step の README を読みながら、自分の `steps/stepNN-xxx/main.go` に書き起こしてください（写経 / 理解しながら手で打つ / コピペ、お好みで）。
+各 step の `README.md` には **実装するコード本体が段階分けで掲載されています**。学習用ディレクトリ (`steps/stepNN-xxx/`) には完成コードを置かず、README を読みながら自分で書き起こす想定です（写経 / 理解しながら手で打つ / コピペ、お好みで）。
 
 1. **その step の `README.md` を読む**
    - 「このステップで学ぶこと」「何を作るか」「実装」を上から順に
    - 関連する座学 (`docs/`) も同時に読むと理解が深まる
-2. **`steps/stepNN-xxx/main.go` を新規作成**
-   - README の `### A. ... ### B. ...` の Go コードブロックを上から順に書いていく
-   - 各ブロックの解説で「**なぜそう書くか**」を確認しながら進める
+2. **コードを書く**
+   - Step 1: `steps/step01-hello-ad/main.go` を新規作成
+   - Step 2 以降: 前 step を `cp -r` で複製し、README の**差分**だけ当てる（Step 3 以降は複数 `.go` ファイルに分割）
+   - middleware は [`steps/_shared/middleware.go`](steps/_shared/middleware.go) を `package main` に書き換えてコピーしてもよい
 3. **動かす・URL を叩く・ログを観察**
    - README の「動作確認」コマンドで挙動を検証
    - 「実験してみよう」で挙動を変えてみる
-4. **次の step へ**
-   - 前の step を `cp -r` で複製して、新しい概念だけ追記する進め方を推奨
+4. **詰まったら**
+   - [`solutions/stepNN-xxx/`](solutions/) と diff する
+   - `./scripts/verify.sh` で参照実装がビルドできるか確認
+5. **次の step へ**
+
+```bash
+# 例: Step 2 へ進む
+cp -r steps/step01-hello-ad steps/step02-ad-selection
+# README の差分を当てて go run ./steps/step02-ad-selection/
+```
 
 ---
 

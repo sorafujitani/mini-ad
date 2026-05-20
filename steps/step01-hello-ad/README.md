@@ -161,6 +161,8 @@ func defaultInventory() Inventory {
 
 middleware は「リクエストを処理する前後に共通処理を差し込む」パターン。Go 標準 `net/http` では `http.Handler` を装飾する形で書く。
 
+Step 2 以降も同じ middleware を使い回します。完成例は [`solutions/step01-hello-ad/`](../../solutions/step01-hello-ad/)、コピー用の抜粋は [`steps/_shared/middleware.go`](../_shared/middleware.go)（`package main` に変更して利用）にもあります。
+
 ```go
 // Middleware は http.Handler を装飾する関数型。
 type Middleware func(http.Handler) http.Handler

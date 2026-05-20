@@ -16,6 +16,10 @@
 
 ---
 
+## 前提
+
+Step 05 までの概念（トラッキング・uid・frequency cap）を理解していること。在庫とイベントは **メモリから PostgreSQL に移す** ステップです。Redis は Step 6 では必須ではありません（Step 5 の freq を DB 化する拡張は任意課題）。
+
 ## 準備
 
 ### 1) PostgreSQL を起動

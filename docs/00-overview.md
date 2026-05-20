@@ -68,7 +68,7 @@
 
 ## このリポジトリでの最終形
 
-Step 8 までで以下を備えた最小のアドサーバを構築します：
+Step 8 までで以下を備えた最小のアドサーバを構築します（各 step の README と、必要に応じて [`solutions/`](../solutions/) の参照実装）：
 
 - 在庫管理（DB に Campaign / LineItem / Creative）
 - ターゲティング（地域 / デバイス）
